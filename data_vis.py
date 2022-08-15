@@ -6,6 +6,7 @@ import pandas as pd
 import plotly.express as px
 import json
 import requests
+import numpy as np
 from io import StringIO
 from os.path import exists
 
@@ -30,7 +31,7 @@ def get_data():
 
         all_dfs = []
         for month in range(1):
-            for day in range(31):
+            for day in range(7):
                 url = url_tpl.format(month+1, day+1)
                 response = requests.get(url)
                 print('Loading {}'.format(url))
@@ -123,28 +124,53 @@ def create_empty_figure(polluant):
     fig.update_layout(title=f'<b>{polluant}</b>', title_y=0.8, title_x=0.03, margin={'l':0, 'r':0, 't':30, 'b':0}, yaxis_title=None, xaxis_title=None)
     return fig
 
+checklist = dcc.Checklist(
+    polluants,
+    polluants,
+    inline=True,
+    id='pollution_checklist'
+)
+
 app.layout =   html.Div([
     dcc.Graph(className='child', id='map_sensors', figure=fig),
-    html.Div(children=html.H1('Select location on map to<br/>display pollution data'),
+    html.Div(children=[checklist, html.Div([html.H1('Select location on map to'), html.H1('display pollution data')])],
              className='child',
              id='line_graphs')
 ], className='parent')
 
+color_palettes = [px.colors.qualitative.Plotly,
+                  px.colors.qualitative.D3,
+                  px.colors.qualitative.Antique,
+                  px.colors.qualitative.Bold,
+                  px.colors.qualitative.Safe,
+                  px.colors.qualitative.Vivid,
+                  px.colors.qualitative.Set3,
+                  px.colors.qualitative.Dark2]
+
 # Builds all the line graphs from the selected point
 @app.callback(
     Output('line_graphs', 'children'),
-    Input('map_sensors', 'selectedData'))
-def display_selected_data(selectedData):
+    Input('map_sensors', 'selectedData'),
+    Input('pollution_checklist', 'value'))
+def display_selected_data(selectedData, value):
+    checklist.value = value
     if selectedData is not None and len(selectedData) > 0:
-        nom_site = selectedData['points'][0]['text']
-        pollution_for_selected_site = df[df['nom site'] == nom_site]
-        children = []
+        site_names = [selected_point['text'] for selected_point in selectedData['points']]
+        pollution_for_selected_sites = [df[df['nom site'] == site_name] for site_name in site_names]
+        children = [checklist]
         for i, polluant in enumerate(polluants):
-            pollution_for_selected_site_for_polluant = pollution_for_selected_site[pollution_for_selected_site['Polluant'] == polluant]
+            if polluant not in value:
+                continue
+            all_dfs = []
+            for pollution_for_selected_site in pollution_for_selected_sites:
+                all_dfs.append(pollution_for_selected_site[pollution_for_selected_site['Polluant'] == polluant])
+            pollution_for_selected_site_for_polluant = pd.concat(all_dfs)
             if pollution_for_selected_site_for_polluant.empty:
                 continue
-            fig = px.area(pollution_for_selected_site_for_polluant, x='Date de début', y='valeur')
-            fig.update_traces(line_width=1, line_color=DEFAULT_PLOTLY_COLORS[i])
+            fig = px.line(pollution_for_selected_site_for_polluant,
+                          x='Date de début', y='valeur', color='nom site',
+                          color_discrete_sequence=color_palettes[i])
+            fig.update_traces(line_width=1) #, line_color=DEFAULT_PLOTLY_COLORS[i])
             fig.update_layout(title=f'<b>{polluant}</b>',
                               title_y=0.8, title_x=0.03,
                               margin={'l':0, 'r':0, 't':30, 'b':0},
@@ -152,14 +178,14 @@ def display_selected_data(selectedData):
             graph = dcc.Graph(id=polluant.replace('.', '_'), figure=fig, className='line-graph')
             children.append(graph)
 
-        if len(children) == 0:
-            return html.H1('No data for location {}.'.format(nom_site))
-        graph_height = '{}%'.format(100/len(children))
-        for graph in children:
+        if len(children) == 1:
+            return [checklist, html.H1('No data for locations: {}.'.format(site_names))]
+        graph_height = '{}%'.format(100/(len(children)-1))
+        for graph in children[1:]:
             graph.style = {'height': graph_height}
         return children
     else:
-        return html.Div([html.H1('Select location on map to'), html.H1('display pollution data')])
+        return [checklist, html.Div([html.H1('Select location on map to'), html.H1('display pollution data')])]
 
 
 if __name__ == '__main__':
