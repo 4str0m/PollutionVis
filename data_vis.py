@@ -1,7 +1,7 @@
 from jupyter_dash import JupyterDash
 import plotly.graph_objects as go
 import dash
-from dash import Dash, dcc, html, Input, Output, State
+from dash import Dash, dcc, html, Input, Output, State, ctx
 import pandas as pd
 import plotly.express as px
 import json
@@ -44,7 +44,7 @@ fig.add_trace(
         lon=site_location_and_PM10_pollution['Longitude'],
         hovertemplate =
         '<b>%{text}</b><br>'+
-        'N%{lat}° E%{lon}°',
+        '%{lat}°<b>N</b> %{lon}°<b>E</b>',
         text = site_location_and_PM10_pollution["Nom station"],
         marker=go.scattermapbox.Marker(
             size=11,
@@ -79,6 +79,7 @@ app = JupyterDash(__name__)
 pollution_for_selected_site = df[(df['nom site'] == 'Lyon Périphérique') & (df['Polluant'] == 'PM10')]
 
 app.layout =   html.Div([
+    # dcc.Dropdown(polluants, 'PM10', id='demo-dropdown'),
     dcc.Graph(className='child', id='map_sensors', figure=fig),
     dcc.Graph(className='child', id='time_series1', figure={})
 ], className='parent')
@@ -89,9 +90,12 @@ app.layout =   html.Div([
 def display_selected_data(selectedData):
     if selectedData is not None and len(selectedData) > 0:
         nom_site = selectedData['points'][0]['text']
-        pollution_for_selected_site = df[(df['nom site'] == nom_site) & (df['Polluant'] == 'PM10')]
-        fig = go.Figure(go.Scatter(x=pollution_for_selected_site['Date de début'], y=pollution_for_selected_site['valeur']))
+        pollution_for_selected_site = df[(df['nom site'] == nom_site)]
+        # pollution_for_selected_site = df[(df['nom site'] == nom_site) & (df['Polluant'] == value)]
+        # fig = go.Figure(go.Scatter(x=pollution_for_selected_site['Date de début'], y=pollution_for_selected_site['valeur'], color=pollution_for_selected_site['Polluant']))
+        fig = px.line(x=pollution_for_selected_site['Date de début'], y=pollution_for_selected_site['valeur'], color=pollution_for_selected_site['Polluant'])
         fig.update_traces(mode='lines+markers')
+        fig.update_layout(title=f'<b>{nom_site}</b>')
         return fig
     else:
         return {}
