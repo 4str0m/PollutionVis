@@ -1,0 +1,9 @@
+.parent {
+  text-align: center;
+}
+.child {
+  display: inline-block;
+  vertical-align: middle;
+  width: 50%;
+  height: 20cm;
+}
