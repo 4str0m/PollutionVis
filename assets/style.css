@@ -5,5 +5,14 @@
   display: inline-block;
   vertical-align: middle;
   width: 50%;
-  height: 20cm;
+  height: 23cm;
+  border-radius: 100px;
+}
+
+h1 {
+    font-family: Arial;
+    vertical-align: middle;
+}
+#map_sensors .modebar{
+  display: none !important;
 }

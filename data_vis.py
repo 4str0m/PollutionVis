@@ -5,32 +5,65 @@ from dash import Dash, dcc, html, Input, Output, State, ctx
 import pandas as pd
 import plotly.express as px
 import json
+import requests
+from io import StringIO
+from os.path import exists
 
-df = pd.read_csv('/home/benoit/Downloads/FR_E2_2021-01-03.csv', sep=';')
-df = df[['Date de début', 'Date de fin', 'code site', 'nom site', 'Polluant', 'valeur', 'valeur brute', 'unité de mesure', 'validité']]
-
-polluants = df['Polluant'].unique()
-
-average_pollution_per_polluant_per_site = {}
-for polluant in polluants:
-    average_pollution_per_polluant_per_site[polluant] = pd.DataFrame
-    df_of_polluant = df[df['Polluant'] == polluant]
-    df_of_polluant_grouped_by_site = df_of_polluant.groupby(by=['code site'])
-    average_pollution_per_polluant_per_site[polluant] = df_of_polluant_grouped_by_site.mean()
-
-site_locations = pd.read_excel('/home/benoit/Downloads/Liste points de mesures 2020 pour site LCSQA_221292021.xlsx',
-                     sheet_name='Points de mesure',
-                     header=2)
+# Load site locations from the internet
+# This will allow us, using the site's code, to plot all our stations on a map
+# Note: it has some incoherencies that we fix here (i.e. misnamed columns)
+site_locations_url = 'https://www.lcsqa.org/system/files/media/documents/Liste%20points%20de%20mesures%202020%20pour%20site%20LCSQA_221292021.xlsx'
+site_locations = pd.read_excel(site_locations_url, sheet_name='Points de mesure', header=2)
 site_locations = site_locations.rename(columns={'Code station': 'code site', 'Latitude': 'unused', 'Longitude': 'Latitude', 'NO2': 'Longitude'})
 site_locations = site_locations[['code site', 'Nom station', 'Latitude', 'Longitude']]
 site_locations = site_locations[(site_locations.Latitude > 0) & (site_locations.Longitude > -6)]
 
-site_location_and_PM10_pollution = pd.merge(site_locations, average_pollution_per_polluant_per_site['PM10'], on=['code site'])
+# Load pollution data
+# We only load some of the available dates for speed
+def get_data():
+    feather_file = 'pollution_data.feather'
+    if exists(feather_file):
+        return pd.read_feather(feather_file)
+    else:
+        url_tpl = 'https://files.data.gouv.fr/lcsqa/concentrations-de-polluants-atmospheriques-reglementes/temps-reel/2021/FR_E2_2021-{:02}-{:02}.csv'
+        wanted_columns = ['Date de début', 'Date de fin', 'code site', 'nom site', 'Polluant', 'valeur', 'valeur brute', 'unité de mesure', 'validité']
+
+        all_dfs = []
+        for month in range(1):
+            for day in range(31):
+                url = url_tpl.format(month+1, day+1)
+                response = requests.get(url)
+                print('Loading {}'.format(url))
+                if not response.ok:
+                    continue
+                csv_str = response.content.decode('utf-8')
+                csv_str_io = StringIO(csv_str)
+                df = pd.read_csv(csv_str_io, sep=';')
+                df = df[wanted_columns]
+                # convert the 'Date' column to datetime format
+                df['Date de début']= pd.to_datetime(df['Date de début'])
+                df['Date de fin']= pd.to_datetime(df['Date de fin'])
+                all_dfs.append(df)
+        df = pd.concat(all_dfs).reset_index()
+        df.fillna(0)
+        df.to_feather(feather_file)
+        return df
+
+df = get_data()
+# Gather a list of all available polluants
+polluants = df['Polluant'].unique()
+site_names = df['nom site'].unique()
+
+# only keep locations that have pollution data
+site_locations = site_locations[site_locations['Nom station'].isin(site_names)]
+
+# Combined all these informations into on DataFrame for plotting
+df_mean_pollution = df[['code site', 'valeur']].groupby(by=['code site']).mean()
 
 fig = go.Figure()
-
+# This Scatter plot acts as an outline for our points
 fig.add_trace(go.Scattermapbox(
-        lat=site_location_and_PM10_pollution['Latitude'], lon=site_location_and_PM10_pollution['Longitude'],
+        lat=site_locations['Latitude'], lon=site_locations['Longitude'],
         mode='markers',
         marker=go.scattermapbox.Marker(
             size=13,
@@ -38,32 +71,31 @@ fig.add_trace(go.Scattermapbox(
         )
     ))
 
+# This plots ou actual data, colored by average pollution levels
 fig.add_trace(
     go.Scattermapbox(
-        lat=site_location_and_PM10_pollution['Latitude'],
-        lon=site_location_and_PM10_pollution['Longitude'],
+        lat=site_locations['Latitude'],
+        lon=site_locations['Longitude'],
         hovertemplate =
         '<b>%{text}</b><br>'+
         '%{lat}°<b>N</b> %{lon}°<b>E</b>',
-        text = site_location_and_PM10_pollution["Nom station"],
+        text = site_locations["Nom station"],
         marker=go.scattermapbox.Marker(
             size=11,
-            color=site_location_and_PM10_pollution['valeur'],
+            color=df_mean_pollution['valeur'],
+            opacity=0.9,
             colorscale=['yellow', 'orange', 'red']
         )
 ))
 
-
 fig.update_layout(
-    title='Pollution',
     autosize=True,
-    margin={"r":0,"t":30,"l":0,"b":0},
+    margin={"r":10,"t":30,"l":10,"b":10},
     hovermode='closest',
     clickmode='event+select',
     showlegend=False,
     mapbox=dict(
         bearing=0,
-        # labels={'valeur': 'µg/m3'},
         style="open-street-map",
         zoom=5,
         center=go.layout.mapbox.Center(
@@ -72,33 +104,63 @@ fig.update_layout(
         )
     ),
 )
+fig.data[0].update(unselected={'marker': {'opacity':1}})
+fig.data[1].update(selected={'marker': {'size':14, 'color':'#33ee44', 'opacity':1}}, unselected={'marker': {'opacity':0.8}})
+
+DEFAULT_PLOTLY_COLORS=['rgb(31, 119, 180)', 'rgb(255, 127, 14)',
+                       'rgb(44, 160, 44)', 'rgb(214, 39, 40)',
+                       'rgb(148, 103, 189)', 'rgb(140, 86, 75)',
+                       'rgb(227, 119, 194)', 'rgb(127, 127, 127)',
+                       'rgb(188, 189, 34)', 'rgb(23, 190, 207)']
 
 # Build small example app.
 app = JupyterDash(__name__)
 
 pollution_for_selected_site = df[(df['nom site'] == 'Lyon Périphérique') & (df['Polluant'] == 'PM10')]
 
+def create_empty_figure(polluant):
+    fig = go.Figure()
+    fig.update_layout(title=f'<b>{polluant}</b>', title_y=0.8, title_x=0.03, margin={'l':0, 'r':0, 't':30, 'b':0}, yaxis_title=None, xaxis_title=None)
+    return fig
+
 app.layout =   html.Div([
-    # dcc.Dropdown(polluants, 'PM10', id='demo-dropdown'),
     dcc.Graph(className='child', id='map_sensors', figure=fig),
-    dcc.Graph(className='child', id='time_series1', figure={})
+    html.Div(children=html.H1('Select location on map to<br/>display pollution data'),
+             className='child',
+             id='line_graphs')
 ], className='parent')
 
+# Builds all the line graphs from the selected point
 @app.callback(
-    Output('time_series1', 'figure'),
+    Output('line_graphs', 'children'),
     Input('map_sensors', 'selectedData'))
 def display_selected_data(selectedData):
     if selectedData is not None and len(selectedData) > 0:
         nom_site = selectedData['points'][0]['text']
-        pollution_for_selected_site = df[(df['nom site'] == nom_site)]
-        # pollution_for_selected_site = df[(df['nom site'] == nom_site) & (df['Polluant'] == value)]
-        # fig = go.Figure(go.Scatter(x=pollution_for_selected_site['Date de début'], y=pollution_for_selected_site['valeur'], color=pollution_for_selected_site['Polluant']))
-        fig = px.line(x=pollution_for_selected_site['Date de début'], y=pollution_for_selected_site['valeur'], color=pollution_for_selected_site['Polluant'])
-        fig.update_traces(mode='lines+markers')
-        fig.update_layout(title=f'<b>{nom_site}</b>')
-        return fig
+        pollution_for_selected_site = df[df['nom site'] == nom_site]
+        children = []
+        for i, polluant in enumerate(polluants):
+            pollution_for_selected_site_for_polluant = pollution_for_selected_site[pollution_for_selected_site['Polluant'] == polluant]
+            if pollution_for_selected_site_for_polluant.empty:
+                continue
+            fig = px.area(pollution_for_selected_site_for_polluant, x='Date de début', y='valeur')
+            fig.update_traces(line_width=1, line_color=DEFAULT_PLOTLY_COLORS[i])
+            fig.update_layout(title=f'<b>{polluant}</b>',
+                              title_y=0.8, title_x=0.03,
+                              margin={'l':0, 'r':0, 't':30, 'b':0},
+                              yaxis_title=None, xaxis_title=None)
+            graph = dcc.Graph(id=polluant.replace('.', '_'), figure=fig, className='line-graph')
+            children.append(graph)
+
+        if len(children) == 0:
+            return html.H1('No data for location {}.'.format(nom_site))
+        graph_height = '{}%'.format(100/len(children))
+        for graph in children:
+            graph.style = {'height': graph_height}
+        return children
     else:
-        return {}
+        return html.Div([html.H1('Select location on map to'), html.H1('display pollution data')])
+
 
 if __name__ == '__main__':
     app.run_server(mode='external', debug=True)
