@@ -1,16 +1,16 @@
-from jupyter_dash import JupyterDash
-import plotly.graph_objects as go
-import dash_bootstrap_components as dbc
-import dash
 from dash import Dash, dcc, html, Input, Output, State, ctx
+from io import StringIO
+from jupyter_dash import JupyterDash
+from os.path import exists
+import dash
+import dash_bootstrap_components as dbc
+import json
+import numpy as np
 import pandas as pd
 import plotly.express as px
+import plotly.graph_objects as go
 import plotly.io as pio
-import json
 import requests
-import numpy as np
-from io import StringIO
-from os.path import exists
 
 pio.templates.default = "plotly_dark"
 
