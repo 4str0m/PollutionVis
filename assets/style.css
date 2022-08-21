@@ -1,3 +1,7 @@
+body {
+  background-color: rgb(15,15,15);
+}
+
 .parent {
   text-align: center;
 }
@@ -8,11 +12,43 @@
   height: 23cm;
   border-radius: 100px;
 }
-
 h1 {
-    font-family: Arial;
-    vertical-align: middle;
+  font-family: Arial;
+  color: white;
+}
+.header_div {
+  border: solid 2px #333;
+  border-radius: 8px;
+  margin:10px;
+  padding:10px;
+  height: 90%;
+  /* 
+  display: flex;
+  justify-content: center;
+  align-items: center; */
+}
+#pollution_checklist {
+  font-family: Arial;
+  color: white;
+}
+#pollution_checklist label {
+  padding-left: 0.5cm;
 }
 #map_sensors .modebar{
   display: none !important;
+}
+.page_title {
+  border: solid 2px #333;
+  margin:10px;
+  padding:10px;
+  border-radius: 4px;
+}
+#checklist_div {
+  border: solid 2px #333;
+  margin:10px;
+  padding:5px;
+  border-radius: 4px;
+}
+input[type="checkbox"] { /* change "blue" browser chrome to yellow */
+  filter: invert(100%) hue-rotate(80deg) brightness(0.6) saturate(0.6);
 }

@@ -1,14 +1,18 @@
 from jupyter_dash import JupyterDash
 import plotly.graph_objects as go
+import dash_bootstrap_components as dbc
 import dash
 from dash import Dash, dcc, html, Input, Output, State, ctx
 import pandas as pd
 import plotly.express as px
+import plotly.io as pio
 import json
 import requests
 import numpy as np
 from io import StringIO
 from os.path import exists
+
+pio.templates.default = "plotly_dark"
 
 # Load site locations from the internet
 # This will allow us, using the site's code, to plot all our stations on a map
@@ -31,7 +35,7 @@ def get_data():
 
         all_dfs = []
         for month in range(1):
-            for day in range(7):
+            for day in range(14):
                 url = url_tpl.format(month+1, day+1)
                 response = requests.get(url)
                 print('Loading {}'.format(url))
@@ -67,8 +71,8 @@ fig.add_trace(go.Scattermapbox(
         lat=site_locations['Latitude'], lon=site_locations['Longitude'],
         mode='markers',
         marker=go.scattermapbox.Marker(
-            size=13,
-            color='black'
+            size=12,
+            color='#333333'
         )
     ))
 
@@ -82,10 +86,10 @@ fig.add_trace(
         '%{lat}°<b>N</b> %{lon}°<b>E</b>',
         text = site_locations["Nom station"],
         marker=go.scattermapbox.Marker(
-            size=11,
+            size=10,
             color=df_mean_pollution['valeur'],
             opacity=0.9,
-            colorscale=['yellow', 'orange', 'red']
+            colorscale=['#882211', '#995544', '#aa9988']
         )
 ))
 
@@ -97,7 +101,7 @@ fig.update_layout(
     showlegend=False,
     mapbox=dict(
         bearing=0,
-        style="open-street-map",
+        style="carto-darkmatter",
         zoom=5,
         center=go.layout.mapbox.Center(
             lat=46.5,
@@ -105,8 +109,9 @@ fig.update_layout(
         )
     ),
 )
-fig.data[0].update(unselected={'marker': {'opacity':1}})
-fig.data[1].update(selected={'marker': {'size':14, 'color':'#33ee44', 'opacity':1}}, unselected={'marker': {'opacity':0.8}})
+fig.data[0].update(unselected={'marker': {'opacity':0.7}})
+fig.data[1].update(selected={'marker': {'size':14, 'color':'#bb8822', 'opacity':1}},
+                   unselected={'marker': {'opacity':0.7}})
 
 DEFAULT_PLOTLY_COLORS=['rgb(31, 119, 180)', 'rgb(255, 127, 14)',
                        'rgb(44, 160, 44)', 'rgb(214, 39, 40)',
@@ -121,21 +126,27 @@ pollution_for_selected_site = df[(df['nom site'] == 'Lyon Périphérique') & (df
 
 def create_empty_figure(polluant):
     fig = go.Figure()
-    fig.update_layout(title=f'<b>{polluant}</b>', title_y=0.8, title_x=0.03, margin={'l':0, 'r':0, 't':30, 'b':0}, yaxis_title=None, xaxis_title=None)
+    fig.update_layout(title=f'<b>{polluant}</b>',
+                      title_y=0.8, title_x=0.03,
+                      margin={'l':0, 'r':0, 't':30, 'b':0},
+                      yaxis_title=None, xaxis_title=None)
     return fig
 
-checklist = dcc.Checklist(
-    polluants,
-    polluants,
-    inline=True,
-    id='pollution_checklist'
-)
+checklist = html.Div(children=[dcc.Checklist(
+                polluants,
+                polluants,
+                inline=True,
+                id='pollution_checklist'
+            )], id='checklist_div')
 
 app.layout =   html.Div([
+    html.H1('France Pollution Visualization', className='page_title'),
     dcc.Graph(className='child', id='map_sensors', figure=fig),
-    html.Div(children=[checklist, html.Div([html.H1('Select location on map to'), html.H1('display pollution data')])],
-             className='child',
-             id='line_graphs')
+    html.Div(children=[
+                checklist,
+                html.Div([html.H1('Select location on map to display pollution data')], className='header_div', id='line_graphs')
+            ],
+             className='child')
 ], className='parent')
 
 color_palettes = [px.colors.qualitative.Plotly,
@@ -157,7 +168,7 @@ def display_selected_data(selectedData, value):
     if selectedData is not None and len(selectedData) > 0:
         site_names = [selected_point['text'] for selected_point in selectedData['points']]
         pollution_for_selected_sites = [df[df['nom site'] == site_name] for site_name in site_names]
-        children = [checklist]
+        children = []
         for i, polluant in enumerate(polluants):
             if polluant not in value:
                 continue
@@ -169,7 +180,8 @@ def display_selected_data(selectedData, value):
                 continue
             fig = px.line(pollution_for_selected_site_for_polluant,
                           x='Date de début', y='valeur', color='nom site',
-                          color_discrete_sequence=color_palettes[i])
+                          color_discrete_sequence=color_palettes[i],
+                          labels={"nom site": "Site"})
             fig.update_traces(line_width=1) #, line_color=DEFAULT_PLOTLY_COLORS[i])
             fig.update_layout(title=f'<b>{polluant}</b>',
                               title_y=0.8, title_x=0.03,
@@ -178,15 +190,15 @@ def display_selected_data(selectedData, value):
             graph = dcc.Graph(id=polluant.replace('.', '_'), figure=fig, className='line-graph')
             children.append(graph)
 
-        if len(children) == 1:
-            return [checklist, html.H1('No data for locations: {}.'.format(site_names))]
-        graph_height = '{}%'.format(100/(len(children)-1))
-        for graph in children[1:]:
+        if len(children) == 0:
+            return [html.H1('No data for locations: {}.'.format(site_names))]
+        graph_height = '{}%'.format(100/len(children))
+        for graph in children:
             graph.style = {'height': graph_height}
         return children
     else:
-        return [checklist, html.Div([html.H1('Select location on map to'), html.H1('display pollution data')])]
+        return [html.Div([html.H1('Select location on map to display pollution data')])]
 
 
 if __name__ == '__main__':
-    app.run_server(mode='external', debug=True)
+    app.run_server(mode='external')
