@@ -1,0 +1,7 @@
+dash==2.6.1
+dash_bootstrap_components==1.2.1
+jupyter_dash==0.4.2
+numpy==1.23.1
+pandas==1.4.3
+plotly==5.10.0
+requests==2.18.4
