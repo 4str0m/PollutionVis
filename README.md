@@ -13,8 +13,6 @@ Download the repo, install the python dependencies and run the script with the f
 ```
 git clone https://github.com/4str0m/PollutionVis.git
 cd PollutionVis
-pip install pipreqs
-pipreqs .
 pip install -r requirements.txt
 python data_vis.py
 ```
